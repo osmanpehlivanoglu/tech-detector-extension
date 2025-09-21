@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "DetechTech",
+  "name": "detectech",
   "version": "1.0",
   "description": "🔍 Discover the hidden tech stack behind any website. Advanced technology detection for developers, designers, and tech enthusiasts.",
   "permissions": [

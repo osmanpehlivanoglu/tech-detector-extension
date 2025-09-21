@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body {
+      width: 350px;
+      padding: 20px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #fafbfc;
+      color: #1f2937;
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 20px;
+      color: #333;
+    }
+
+    .loading {
+      text-align: center;
+      color: #666;
+    }
+
+    .tech-category {
+      margin-bottom: 15px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    .tech-category:last-of-type {
+      border-bottom: 1px solid #e5e7eb;
+      margin-bottom: 5px;
+    }
+
+    .category-title {
+      font-weight: bold;
+      color: #6b7280;
+      margin-bottom: 8px;
+      font-size: 13px;
+    }
+
+    .tech-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-left: 10px;
+    }
+
+    .tech-item {
+      display: inline-block;
+    }
+
+    .tech-badge {
+      display: inline-block;
+      background: #f6f7f9;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 4px 10px;
+      font-size: 12px;
+      color: #374151;
+      white-space: nowrap;
+    }
+    .inferred-dot {
+      display: inline-block;
+      width: 6px; height: 6px;
+      background: #9ca3af;
+      border-radius: 50%;
+      margin-left: 6px;
+    }
+
+
+    .no-tech {
+      color: #9ca3af;
+      font-style: italic;
+      margin-left: 10px;
+      font-size: 12px;
+    }
+
+    .error {
+      color: #d93025;
+      text-align: center;
+    }
+
+    .open-site {
+      padding: 4px 8px;
+      border: 1px solid #e5e7eb;
+      background: #ffffff;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 11px;
+      color: #374151;
+    }
+
+    .open-site:hover {
+      background: #f3f4f6;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h2 id="title">🔍 Tech Detector</h2>
+  </div>
+
+  <div id="loading" class="loading">
+    Analyzing technologies...
+  </div>
+
+  <div id="results" style="display: none;">
+    <div class="tech-category">
+      <div class="category-title" data-i18n="categories.frameworks">JavaScript Frameworks</div>
+      <div class="tech-container" id="frameworks"></div>
+    </div>
+
+    <div class="tech-category">
+      <div class="category-title" data-i18n="categories.cssFrameworks">CSS Frameworks</div>
+      <div class="tech-container" id="css-frameworks"></div>
+    </div>
+
+    <div class="tech-category">
+      <div class="category-title" data-i18n="categories.analytics">Analytics & Tracking</div>
+      <div class="tech-container" id="analytics"></div>
+    </div>
+
+    <div class="tech-category">
+      <div class="category-title" data-i18n="categories.cms">CMS & Platforms</div>
+      <div class="tech-container" id="cms"></div>
+    </div>
+
+    <div class="tech-category">
+      <div class="category-title" data-i18n="categories.libraries">Libraries</div>
+      <div class="tech-container" id="libraries"></div>
+    </div>
+
+    <div class="tech-category">
+      <div class="category-title" data-i18n="categories.backend">Backend Technologies</div>
+      <div class="tech-container" id="backend"></div>
+    </div>
+
+    <div class="tech-category">
+      <div class="category-title" data-i18n="categories.databases">Databases</div>
+      <div class="tech-container" id="databases"></div>
+    </div>
+
+    <div class="tech-category">
+      <div class="category-title" data-i18n="categories.hosting">Hosting & CDN</div>
+      <div class="tech-container" id="hosting"></div>
+    </div>
+  </div>
+
+  <div id="error" class="error" style="display: none;">
+    Technology detection failed.
+  </div>
+
+
+  <div class="actions" style="margin-top:15px;">
+    <div style="margin-bottom:15px; padding-bottom:12px; border-bottom:1px solid #e5e7eb;">
+      <div class="category-title" data-i18n="testSites">Test Sites</div>
+      <div style="display:flex; gap:6px; flex-wrap:wrap;">
+        <button class="open-site" data-url="https://dowe.app/">dowe.app</button>
+        <button class="open-site" data-url="https://nextjs.org/">nextjs.org</button>
+        <button class="open-site" data-url="https://vercel.com/">vercel.com</button>
+        <button class="open-site" data-url="https://react.dev/">react.dev</button>
+        <button class="open-site" data-url="https://wordpress.com/themes/">wordpress.com</button>
+        <button class="open-site" data-url="https://magento.com/">magento.com</button>
+        <button class="open-site" data-url="https://www.shopify.com/">shopify.com</button>
+      </div>
+    </div>
+    <button id="copy-json" style="padding:6px 12px; border:1px solid #e5e7eb; background:#f9fafb; border-radius:6px; cursor:pointer; font-size:12px;" data-i18n="copyJson">Copy JSON</button>
+  </div>
+
+  <script src="translations.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,22 @@
+# Claude AI files
+AGENTS.md
+CLAUDE.md
+
+# Development files
+*.log
+.DS_Store
+Thumbs.db
+
+# Package files
+*.zip
+tech-detector.zip
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temporary files
+*.tmp
+*.temp

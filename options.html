@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Tech Detector Options</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; padding: 16px; max-width: 720px; }
+    h1 { font-size: 18px; margin: 0 0 12px; }
+    .section { border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+    .row { display: flex; align-items: center; justify-content: space-between; margin: 8px 0; }
+    label { display: flex; align-items: center; gap: 8px; }
+    input[type="number"] { width: 100px; }
+    .actions { display: flex; gap: 8px; margin-top: 8px; }
+    @media (prefers-color-scheme: dark) {
+      body { background: #111827; color: #e5e7eb; }
+      .section { border-color: #374151; }
+      input, button { background: #0b1220; color: #e5e7eb; border: 1px solid #374151; }
+    }
+  </style>
+  <script defer src="options.js"></script>
+  </head>
+  <body>
+    <h1>Tech Detector Options</h1>
+    <div class="section">
+      <div class="row">
+        <label>
+          <input type="checkbox" id="enableChunkScan" />
+          <span>Enable chunk scan (Supabase hints)</span>
+        </label>
+      </div>
+      <div class="row">
+        <label>
+          <input type="checkbox" id="activeTabOnly" />
+          <span>Collect signals only for active tab</span>
+        </label>
+      </div>
+      <div class="row">
+        <label>Max chunk files <input type="number" id="chunkScanMaxFiles" min="1" max="50" /></label>
+        <label>Max time (ms) <input type="number" id="chunkScanMaxTimeMs" min="100" max="2000" step="50" /></label>
+      </div>
+    </div>
+    <div class="actions">
+      <button id="saveBtn">Save</button>
+      <span id="status"></span>
+    </div>
+  </body>
+  </html>

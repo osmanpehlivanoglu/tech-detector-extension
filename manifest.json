@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Tech Detector",
+  "name": "DetechTech",
   "version": "1.0",
-  "description": "Web sitelerinde kullanılan teknolojileri tespit eder",
+  "description": "🔍 Discover the hidden tech stack behind any website. Advanced technology detection for developers, designers, and tech enthusiasts.",
   "permissions": [
     "activeTab",
     "scripting",
@@ -12,9 +12,19 @@
   "host_permissions": [
     "<all_urls>"
   ],
+  "icons": {
+    "16": "icon.svg",
+    "48": "icon.svg",
+    "128": "icon.svg"
+  },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Tech Detector"
+    "default_title": "detectech",
+    "default_icon": {
+      "16": "icon.svg",
+      "48": "icon.svg",
+      "128": "icon.svg"
+    }
   },
   "content_scripts": [
     {

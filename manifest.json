@@ -1,29 +1,26 @@
 {
-  "manifest_version": 3,
+  "manifest_version": 2,
   "name": "detectech",
   "version": "1.0",
   "description": "🔍 Discover the hidden tech stack behind any website. Advanced technology detection for developers, designers, and tech enthusiasts.",
   "permissions": [
     "activeTab",
-    "scripting",
     "webRequest",
-    "storage"
-  ],
-  "host_permissions": [
+    "storage",
     "<all_urls>"
   ],
   "icons": {
-    "16": "icon.svg",
-    "48": "icon.svg",
-    "128": "icon.svg"
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
   },
-  "action": {
+  "browser_action": {
     "default_popup": "popup.html",
     "default_title": "detectech",
     "default_icon": {
-      "16": "icon.svg",
-      "48": "icon.svg",
-      "128": "icon.svg"
+      "16": "icon16.png",
+      "48": "icon48.png",
+      "128": "icon128.png"
     }
   },
   "content_scripts": [
@@ -34,7 +31,8 @@
     }
   ],
   "background": {
-    "service_worker": "background.js"
+    "scripts": ["background.js"],
+    "persistent": false
   },
   "options_page": "options.html"
 }

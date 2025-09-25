@@ -1,3 +1,6 @@
+// Browser API compatibility
+const runtime = (typeof browser !== 'undefined' && browser.runtime) || (typeof chrome !== 'undefined' && chrome.runtime);
+
 // Prevent duplicate injection/redeclaration across repeated runs
 (function() {
   if (window.__TECH_DETECTOR_LOADED__) {
@@ -649,14 +652,14 @@ class TechDetector {
           if (!self.detectedTechs.databases.find(d => d.name === 'Supabase')) {
             self.detectedTechs.databases.push({ name: 'Supabase' });
             self.detectedTechs.databases.push({ name: 'PostgreSQL', inferred: true });
-            chrome.runtime.sendMessage({ action: 'techDetected', data: self.detectedTechs });
+            runtime.sendMessage({ action: 'techDetected', data: self.detectedTechs });
           }
         }
 
         if (url.includes('/api/')) {
           if (!self.detectedTechs.backend.find(b => b.name === 'Next.js API')) {
             self.detectedTechs.backend.push({ name: 'Next.js API' });
-            chrome.runtime.sendMessage({ action: 'techDetected', data: self.detectedTechs });
+            runtime.sendMessage({ action: 'techDetected', data: self.detectedTechs });
           }
         }
       }
@@ -679,13 +682,13 @@ class TechDetector {
                 if (!self.detectedTechs.databases.find(d => d.name === 'Supabase')) {
                   self.detectedTechs.databases.push({ name: 'Supabase' });
                   self.detectedTechs.databases.push({ name: 'PostgreSQL', inferred: true });
-                  chrome.runtime.sendMessage({ action: 'techDetected', data: self.detectedTechs });
+                  runtime.sendMessage({ action: 'techDetected', data: self.detectedTechs });
                 }
               }
               if (url.startsWith('/api/')) {
                 if (!self.detectedTechs.backend.find(b => b.name === 'Next.js API')) {
                   self.detectedTechs.backend.push({ name: 'Next.js API' });
-                  chrome.runtime.sendMessage({ action: 'techDetected', data: self.detectedTechs });
+                  runtime.sendMessage({ action: 'techDetected', data: self.detectedTechs });
                 }
               }
             }
@@ -706,7 +709,7 @@ class TechDetector {
           if (typeof url === 'string' && url.startsWith('/api/')) {
             if (!self.detectedTechs.backend.find(b => b.name === 'Next.js API')) {
               self.detectedTechs.backend.push({ name: 'Next.js API' });
-              chrome.runtime.sendMessage({ action: 'techDetected', data: self.detectedTechs });
+              runtime.sendMessage({ action: 'techDetected', data: self.detectedTechs });
             }
           }
         } catch {}
@@ -726,7 +729,7 @@ class TechDetector {
               if (!self.detectedTechs.databases.find(d => d.name === 'Supabase')) {
                 self.detectedTechs.databases.push({ name: 'Supabase' });
                 self.detectedTechs.databases.push({ name: 'PostgreSQL', inferred: true });
-                chrome.runtime.sendMessage({ action: 'techDetected', data: self.detectedTechs });
+                runtime.sendMessage({ action: 'techDetected', data: self.detectedTechs });
               }
             }
           } catch {}
@@ -764,14 +767,24 @@ class TechDetector {
   }
 }
 
+// Export TechDetector for Firefox direct access
+window.TechDetector = TechDetector;
+
 // Re-runnable detection entrypoint
 window.__runTechDetector = async () => {
   try {
     const detector = new TechDetector();
     await detector.loadSettings?.();
     const detectedTechs = await detector.detect();
-    chrome.runtime.sendMessage({ action: 'techDetected', data: detectedTechs });
+
+    // Store for Firefox fallback
+    window.__detectedTechs = detectedTechs;
+
+    runtime.sendMessage({ action: 'techDetected', data: detectedTechs });
+    return detectedTechs;
   } catch (e) {
+    console.error('Content script error:', e);
+    return null;
   }
 };
 

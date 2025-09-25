@@ -1,3 +1,8 @@
+// Browser API compatibility - fixed circular reference
+const runtime = (typeof browser !== 'undefined' && browser.runtime) || (typeof chrome !== 'undefined' && chrome.runtime);
+const tabs = (typeof browser !== 'undefined' && browser.tabs) || (typeof chrome !== 'undefined' && chrome.tabs);
+const scripting = (typeof browser !== 'undefined' && browser.scripting) || (typeof chrome !== 'undefined' && chrome.scripting);
+
 document.addEventListener('DOMContentLoaded', async () => {
   // Initialize i18n
   initializeI18n();
@@ -8,28 +13,62 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   try {
     // Background script'ten veri al
-    const response = await chrome.runtime.sendMessage({ action: 'getTechData' });
+    const response = await runtime.sendMessage({ action: 'getTechData' }).catch(err => {
+      return null;
+    });
 
     if (response && response.data) {
       displayResults(response.data);
     } else {
-      // Eğer veri yoksa, content script'i yeniden çalıştır
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      // Firefox fallback: Direct content script execution
+      const [tab] = await tabs.query({ active: true, currentWindow: true });
 
-      await chrome.scripting.executeScript({
+      // Direct content script ile veri al
+      const results = await scripting.executeScript({
         target: { tabId: tab.id },
-        files: ['content.js']
+        func: () => {
+          // Direct TechDetector execution
+          if (window.TechDetector) {
+            const detector = new window.TechDetector();
+            detector.detectAll();
+            return detector.detectedTechs;
+          } else if (window.__runTechDetector) {
+            window.__runTechDetector();
+            return window.__detectedTechs || null;
+          }
+          return null;
+        }
       });
 
-      // Biraz bekle ve tekrar dene
-      setTimeout(async () => {
-        const newResponse = await chrome.runtime.sendMessage({ action: 'getTechData' });
-        if (newResponse && newResponse.data) {
-          displayResults(newResponse.data);
-        } else {
-          showError();
-        }
-      }, 1000);
+      if (results && results[0] && results[0].result) {
+        displayResults(results[0].result);
+      } else {
+        // Eğer hala sonuç yoksa, content script yükle ve bekle
+        await scripting.executeScript({
+          target: { tabId: tab.id },
+          files: ['translations.js', 'content.js']
+        });
+
+        setTimeout(async () => {
+          const retryResults = await scripting.executeScript({
+            target: { tabId: tab.id },
+            func: () => window.__detectedTechs || null
+          });
+
+          if (retryResults && retryResults[0] && retryResults[0].result) {
+            displayResults(retryResults[0].result);
+          } else {
+            showError();
+          }
+        }, 2000);
+
+        // Final timeout
+        setTimeout(() => {
+          if (loadingDiv.style.display !== 'none') {
+            showError();
+          }
+        }, 5000);
+      }
     }
   } catch (error) {
     console.error('Error:', error);
@@ -41,7 +80,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const copyBtn = document.getElementById('copy-json');
   copyBtn.addEventListener('click', async () => {
     try {
-      const resp = await chrome.runtime.sendMessage({ action: 'getTechData' });
+      const resp = await runtime.sendMessage({ action: 'getTechData' });
       const data = resp?.data || {};
       await navigator.clipboard.writeText(JSON.stringify(data, null, 2));
       copyBtn.textContent = t('copied');
@@ -56,7 +95,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.querySelectorAll('.open-site').forEach(btn => {
     btn.addEventListener('click', () => {
       const url = btn.getAttribute('data-url');
-      chrome.tabs.create({ url });
+      tabs.create({ url });
     });
   });
 });

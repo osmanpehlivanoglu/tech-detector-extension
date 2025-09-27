@@ -27,6 +27,18 @@ class TechDetector {
     };
     // Track high-level context for cross-method use
     this.isNextJs = false;
+    // Basic settings (can be extended via messaging later)
+    this.settings = {
+      enableChunkScan: false,
+      chunkScanMaxFiles: 15,
+      chunkScanMaxTimeMs: 500,
+      enableHeaderHostingDetection: true,
+      headerDetectionTimeoutMs: 800
+    };
+  }
+
+  isSameOrigin(url) {
+    try { const u = new URL(url, window.location.href); return u.origin === window.location.origin; } catch { return false; }
   }
 
   async detect() {
@@ -45,9 +57,9 @@ class TechDetector {
     if (hasNextApi) {
       this.detectedTechs.backend = this.detectedTechs.backend.filter(b => b.name !== 'Node.js');
     }
-    // - If no backend detected but Next.js is present, infer Node.js (runtime)
+    // - If no backend detected but Next.js is present, infer Next.js runtime
     if (!hasNextApi && this.detectedTechs.backend.length === 0 && this.isNextJs) {
-      this.detectedTechs.backend.push({ name: 'Node.js', inferred: true });
+      this.detectedTechs.backend.push({ name: 'Next.js (runtime)', inferred: true });
     }
     return this.detectedTechs;
   }
@@ -242,18 +254,19 @@ class TechDetector {
 
     if (this.isNextJs) {
       // Check for API routes more thoroughly
+      const bodyHTML = document.body.innerHTML || '';
+      const scriptsArr = Array.from(document.scripts);
       const apiIndicators = {
-        bodyContainsApi: document.body.innerHTML.includes('/api/'),
+        bodyContainsApi: bodyHTML.includes('/api/'),
+        bodyContainsTrpc: /(^|[^a-zA-Z])trpc([^a-zA-Z]|$)|\"\/trpc|\'\/trpc/.test(bodyHTML),
+        bodyContainsGraphql: /graphql/i.test(bodyHTML),
         nextDataProps: !!window.__NEXT_DATA__?.props,
-        scriptContainsApi: Array.from(document.scripts).some(script =>
-          script.textContent && script.textContent.includes('/api/')
-        ),
-        fetchCalls: document.body.innerHTML.includes('fetch("/api/') ||
-                   document.body.innerHTML.includes("fetch('/api/"),
+        scriptContainsApi: scriptsArr.some(script => script.textContent && (/\/api\//.test(script.textContent) || /\"\/trpc|\'\/trpc/.test(script.textContent) || /graphql/i.test(script.textContent))),
+        fetchCalls: /fetch\([\"\']\/(api\/|trpc|graphql)/.test(bodyHTML),
         nextRouter: window.next?.router // Next.js router
       };
 
-      if (apiIndicators.bodyContainsApi ||
+      if (apiIndicators.bodyContainsApi || apiIndicators.bodyContainsTrpc || apiIndicators.bodyContainsGraphql ||
           apiIndicators.scriptContainsApi ||
           apiIndicators.fetchCalls) {
         this.detectedTechs.backend.push({ name: 'Next.js API' });
@@ -287,14 +300,58 @@ class TechDetector {
         document.querySelector('script[src*="laravel"]') ||
         document.querySelector('meta[name="generator"][content*="Laravel"]') ||
         document.cookie.includes('laravel_session=') ||
-        document.cookie.includes('XSRF-TOKEN=')) {
+        document.cookie.includes('XSRF-TOKEN=') ||
+        document.cookie.includes('remember_web=')) {
       this.detectedTechs.backend.push({ name: 'Laravel' });
     }
 
-    // Generic PHP (cookie)
-    if (document.cookie.includes('PHPSESSID=')) {
-      this.detectedTechs.backend.push({ name: 'PHP' });
-    }
+    // Generic PHP (cookies, DOM/resource URLs)
+    try {
+      const cookiesLower = (document.cookie || '').toLowerCase();
+      const hasPhpSessId = cookiesLower.includes('phpsessid=');
+
+      // Look for .php endpoints referenced in the page
+      const nodes = [
+        ...Array.from(document.querySelectorAll('a[href]')),
+        ...Array.from(document.querySelectorAll('form[action]')),
+        ...Array.from(document.querySelectorAll('script[src]')),
+        ...Array.from(document.querySelectorAll('link[href]')),
+        ...Array.from(document.querySelectorAll('img[src]'))
+      ];
+      const hasPhpUrl = nodes.some(el => {
+        const url = el.getAttribute('href') || el.getAttribute('src') || el.getAttribute('action') || '';
+        return /\.php(\?|$)/i.test(url);
+      });
+
+      // WordPress AJAX endpoint is a strong PHP signal
+      const hasWpAjax = document.documentElement.outerHTML.includes('admin-ajax.php');
+      const hasWpJson = document.documentElement.outerHTML.includes('/wp-json');
+
+      if ((hasPhpSessId || hasPhpUrl || hasWpAjax || hasWpJson) &&
+          !this.detectedTechs.backend.find(b => b.name === 'PHP')) {
+        this.detectedTechs.backend.push({ name: 'PHP' });
+      }
+    } catch {}
+
+    // Express session cookie
+    try {
+      const ck = (document.cookie || '');
+      if (ck.includes('connect.sid=')) {
+        if (!this.detectedTechs.backend.find(b => b.name === 'Express.js')) {
+          this.detectedTechs.backend.push({ name: 'Express.js' });
+        }
+      }
+    } catch {}
+
+    // NextAuth cookies imply Next.js backend
+    try {
+      const ck = (document.cookie || '');
+      if (ck.includes('next-auth.session-token=') || ck.includes('__Secure-next-auth.session-token=') || ck.includes('__Host-next-auth.session-token=')) {
+        if (!this.detectedTechs.backend.find(b => b.name === 'Next.js API')) {
+          this.detectedTechs.backend.push({ name: 'Next.js API' });
+        }
+      }
+    } catch {}
 
     // CodeIgniter (cookie)
     if (document.cookie.toLowerCase().includes('ci_session=')) {
@@ -316,11 +373,26 @@ class TechDetector {
         document.cookie.includes('.AspNetCore.')) {
       this.detectedTechs.backend.push({ name: 'ASP.NET' });
     }
+    // Classic ASP.NET session cookie
+    try {
+      const ck = (document.cookie || '').toLowerCase();
+      if (ck.includes('asp.net_sessionid=')) {
+        if (!this.detectedTechs.backend.find(b => b.name === 'ASP.NET')) {
+          this.detectedTechs.backend.push({ name: 'ASP.NET' });
+        }
+      }
+    } catch {}
 
     // Strapi (inline script mentions)
     const inlineText = Array.from(document.scripts).map(s => s.textContent || '').join(' ');
     if (/strapi/i.test(inlineText)) {
       this.detectedTechs.backend.push({ name: 'Strapi' });
+    }
+    // Laravel inline markers
+    if (/window\.Laravel\b/i.test(inlineText) || /laravel-mix/i.test(inlineText)) {
+      if (!this.detectedTechs.backend.find(b => b.name === 'Laravel')) {
+        this.detectedTechs.backend.push({ name: 'Laravel' });
+      }
     }
 
     // ASP.NET
@@ -349,6 +421,16 @@ class TechDetector {
       this.detectedTechs.backend.push({ name: 'Node.js' });
     }
 
+    // Infer backend from CMS when applicable (PHP-based stacks)
+    try {
+      const phpCms = ['WordPress', 'Drupal', 'Joomla', 'Magento', 'OpenCart', 'PrestaShop', 'WooCommerce'];
+      const cmsNames = (this.detectedTechs.cms || []).map(c => c.name);
+      const isPhpBacked = cmsNames.some(n => phpCms.includes(n));
+      if (isPhpBacked && !this.detectedTechs.backend.find(b => b.name === 'PHP')) {
+        this.detectedTechs.backend.push({ name: 'PHP', inferred: true });
+      }
+    } catch {}
+
     // Try to detect via network requests
     await this.detectViaNetworkRequests();
   }
@@ -373,7 +455,9 @@ class TechDetector {
     if (window.firebase ||
         document.querySelector('script[src*="firebase"]') ||
         document.querySelector('meta[name="firebase-app-id"]') ||
-        document.querySelector('script[src*="firebaseapp.com"]')) {
+        document.querySelector('script[src*="firebaseapp.com"]') ||
+        document.querySelector('script[src*="firebaseio.com"]') ||
+        document.querySelector('script[src*="gstatic.com/firebasejs"]')) {
       this.detectedTechs.databases.push({ name: 'Firebase' });
     }
 
@@ -468,6 +552,82 @@ class TechDetector {
     if (window.location.hostname.includes('railway.app')) {
       this.detectedTechs.hosting.push({ name: 'Railway' });
     }
+
+    // Azure App Service
+    try {
+      const host = (window.location.hostname || '').toLowerCase();
+      const cookies = (document.cookie || '');
+      const azureCookie = cookies.includes('ARRAffinity=') || cookies.includes('ARRAffinitySameSite=') || cookies.includes('ApplicationGatewayAffinity=');
+      if (host.includes('azurewebsites.net') || azureCookie) {
+        if (!this.detectedTechs.hosting.find(h => h.name === 'Azure App Service')) {
+          this.detectedTechs.hosting.push({ name: 'Azure App Service' });
+        }
+      }
+    } catch {}
+
+    // Optional: detect hosting via response headers (same-origin only)
+    if (this.settings.enableHeaderHostingDetection) {
+      this.detectHostingViaHeaders().catch(() => {});
+    }
+  }
+
+  async detectHostingViaHeaders() {
+    try {
+      const controller = new AbortController();
+      const to = setTimeout(() => controller.abort(), Math.max(200, Math.min(2000, this.settings.headerDetectionTimeoutMs || 800)));
+      const res = await fetch(window.location.href, { method: 'GET', cache: 'no-store', credentials: 'same-origin', signal: controller.signal });
+      clearTimeout(to);
+      const headers = res.headers;
+      const hv = (k) => (headers.get(k) || '').toLowerCase();
+
+      // Vercel indicators
+      const vercel = hv('x-vercel-id') || hv('x-vercel-cache') || hv('server').includes('vercel') || hv('x-now-trace');
+      if (vercel) {
+        const existing = this.detectedTechs.hosting.find(h => h.name === 'Vercel');
+        if (existing) {
+          existing.via = existing.via || 'headers';
+        } else {
+          this.detectedTechs.hosting.push({ name: 'Vercel', via: 'headers' });
+        }
+        runtime?.sendMessage?.({ action: 'techDetected', data: this.detectedTechs });
+      }
+
+      // Netlify
+      const netlify = hv('x-nf-request-id') || hv('server').includes('netlify');
+      if (netlify) {
+        const existing = this.detectedTechs.hosting.find(h => h.name === 'Netlify');
+        if (existing) {
+          existing.via = existing.via || 'headers';
+        } else {
+          this.detectedTechs.hosting.push({ name: 'Netlify', via: 'headers' });
+        }
+        runtime?.sendMessage?.({ action: 'techDetected', data: this.detectedTechs });
+      }
+
+      // Cloudflare
+      const cloudflare = hv('cf-ray') || hv('server').includes('cloudflare');
+      if (cloudflare) {
+        const existing = this.detectedTechs.hosting.find(h => h.name === 'Cloudflare');
+        if (existing) {
+          existing.via = existing.via || 'headers';
+        } else {
+          this.detectedTechs.hosting.push({ name: 'Cloudflare', via: 'headers' });
+        }
+        runtime?.sendMessage?.({ action: 'techDetected', data: this.detectedTechs });
+      }
+
+      // AWS CloudFront
+      const cloudfront = hv('server').includes('cloudfront') || hv('x-amz-cf-id');
+      if (cloudfront) {
+        const existing = this.detectedTechs.hosting.find(h => h.name === 'AWS');
+        if (existing) {
+          existing.via = existing.via || 'headers';
+        } else {
+          this.detectedTechs.hosting.push({ name: 'AWS', via: 'headers' });
+        }
+        runtime?.sendMessage?.({ action: 'techDetected', data: this.detectedTechs });
+      }
+    } catch {}
   }
 
   getReactVersion() {
@@ -584,12 +744,63 @@ class TechDetector {
         }
       }
 
+      // Firebase via inline init patterns
+      if ((/firebase/i.test(scriptContents) && (/initializeApp\(/.test(scriptContents) || /firebaseConfig/i.test(scriptContents))) ||
+          /gstatic\.com\/firebasejs/i.test(currentPageContent) ||
+          /firebaseio\.com/i.test(currentPageContent) ||
+          /firestore\.googleapis\.com/i.test(currentPageContent) ||
+          /identitytoolkit\.googleapis\.com/i.test(currentPageContent)) {
+        if (!this.detectedTechs.databases.find(d => d.name === 'Firebase')) {
+          this.detectedTechs.databases.push({ name: 'Firebase' });
+        }
+      }
+
       // If Supabase is present, infer PostgreSQL (Supabase uses Postgres)
       if (this.detectedTechs.databases.find(d => d.name === 'Supabase') &&
           !this.detectedTechs.databases.find(d => d.name === 'PostgreSQL')) {
         this.detectedTechs.databases.push({ name: 'PostgreSQL', inferred: true });
       }
 
+
+      // Resource-level scan (Performance API) for backend/db hints
+      try {
+        const entries = performance?.getEntriesByType?.('resource') || [];
+        for (const e of entries) {
+          const name = (e.name || '').toString();
+          const sameOrigin = this.isSameOrigin(name);
+          if (/\.php(\?|$)/i.test(name)) {
+            if (!this.detectedTechs.backend.find(b => b.name === 'PHP')) {
+              this.detectedTechs.backend.push({ name: 'PHP' });
+            }
+          }
+          if (/\.aspx(\?|$)/i.test(name) || name.includes('__VIEWSTATE')) {
+            if (!this.detectedTechs.backend.find(b => b.name === 'ASP.NET')) {
+              this.detectedTechs.backend.push({ name: 'ASP.NET' });
+            }
+          }
+          if (this.isNextJs && sameOrigin && (/\/api\//.test(name) || /\/(trpc|graphql)(\?|\/|$)/i.test(name))) {
+            if (!this.detectedTechs.backend.find(b => b.name === 'Next.js API')) {
+              this.detectedTechs.backend.push({ name: 'Next.js API' });
+            }
+          }
+          
+          if (/\/rest\/v1|\/auth\/v1|\/realtime\/v1/i.test(name)) {
+            if (!this.detectedTechs.databases.find(d => d.name === 'Supabase')) {
+              this.detectedTechs.databases.push({ name: 'Supabase', inferred: true });
+            }
+          }
+          if (/firebaseio\.com|firestore\.googleapis\.com|identitytoolkit\.googleapis\.com|gstatic\.com\/firebasejs/i.test(name)) {
+            if (!this.detectedTechs.databases.find(d => d.name === 'Firebase')) {
+              this.detectedTechs.databases.push({ name: 'Firebase' });
+            }
+          }
+          if (this.isNextJs && name.includes('/api/')) {
+            if (!this.detectedTechs.backend.find(b => b.name === 'Next.js API')) {
+              this.detectedTechs.backend.push({ name: 'Next.js API' });
+            }
+          }
+        }
+      } catch {}
 
       // Check window object for framework/service clues
       const windowKeys = Object.keys(window);
@@ -656,15 +867,82 @@ class TechDetector {
           }
         }
 
-        if (url.includes('/api/')) {
-          if (!self.detectedTechs.backend.find(b => b.name === 'Next.js API')) {
-            self.detectedTechs.backend.push({ name: 'Next.js API' });
+        try {
+          const u = new URL(url, window.location.href);
+          const p = u.pathname || '';
+          const sameOrigin = (u.origin === window.location.origin);
+          if (sameOrigin && (p.includes('/api/') || p.startsWith('/trpc') || p.includes('/graphql'))) {
+            if (!self.detectedTechs.backend.find(b => b.name === 'Next.js API')) {
+              self.detectedTechs.backend.push({ name: 'Next.js API' });
+              runtime.sendMessage({ action: 'techDetected', data: self.detectedTechs });
+            }
+          }
+          // Same-site subdomain API patterns → infer Node.js backend
+          
+        } catch {}
+        if (/\.php(\?|$)/i.test(url)) {
+          if (!self.detectedTechs.backend.find(b => b.name === 'PHP')) {
+            self.detectedTechs.backend.push({ name: 'PHP' });
+            runtime.sendMessage({ action: 'techDetected', data: self.detectedTechs });
+          }
+        }
+        if (/\.aspx(\?|$)/i.test(url)) {
+          if (!self.detectedTechs.backend.find(b => b.name === 'ASP.NET')) {
+            self.detectedTechs.backend.push({ name: 'ASP.NET' });
+            runtime.sendMessage({ action: 'techDetected', data: self.detectedTechs });
+          }
+        }
+        if (/\/rest\/v1|\/auth\/v1|\/realtime\/v1/i.test(url)) {
+          if (!self.detectedTechs.databases.find(d => d.name === 'Supabase')) {
+            self.detectedTechs.databases.push({ name: 'Supabase', inferred: true });
+            runtime.sendMessage({ action: 'techDetected', data: self.detectedTechs });
+          }
+        }
+        if (/firebaseio\.com|firestore\.googleapis\.com|identitytoolkit\.googleapis\.com|gstatic\.com\/firebasejs/i.test(url)) {
+          if (!self.detectedTechs.databases.find(d => d.name === 'Firebase')) {
+            self.detectedTechs.databases.push({ name: 'Firebase' });
             runtime.sendMessage({ action: 'techDetected', data: self.detectedTechs });
           }
         }
       }
 
-        return originalFetch(...args);
+        const p = originalFetch(...args);
+        try {
+          return p.then(res => {
+            try {
+              const hv = (k) => (res.headers?.get?.(k) || '').toLowerCase();
+              const xpb = hv('x-powered-by');
+              const server = hv('server');
+
+              if (xpb.includes('express') || server.includes('express')) {
+                if (!self.detectedTechs.backend.find(b => b.name === 'Express.js')) {
+                  self.detectedTechs.backend.push({ name: 'Express.js' });
+                  runtime.sendMessage({ action: 'techDetected', data: self.detectedTechs });
+                }
+              }
+              if (xpb.includes('fastify') || server.includes('fastify')) {
+                if (!self.detectedTechs.backend.find(b => b.name === 'Fastify')) {
+                  self.detectedTechs.backend.push({ name: 'Fastify' });
+                  runtime.sendMessage({ action: 'techDetected', data: self.detectedTechs });
+                }
+              }
+              if (xpb.includes('nestjs') || server.includes('nest')) {
+                if (!self.detectedTechs.backend.find(b => b.name === 'NestJS')) {
+                  self.detectedTechs.backend.push({ name: 'NestJS' });
+                  runtime.sendMessage({ action: 'techDetected', data: self.detectedTechs });
+                }
+              }
+              if (server.includes('node')) {
+                if (!self.detectedTechs.backend.find(b => b.name === 'Node.js')) {
+                  self.detectedTechs.backend.push({ name: 'Node.js' });
+                  runtime.sendMessage({ action: 'techDetected', data: self.detectedTechs });
+                }
+              }
+            } catch {}
+            return res;
+          });
+        } catch {}
+        return p;
       };
     }
 
@@ -675,9 +953,11 @@ class TechDetector {
       function WrappedXHR() {
         const xhr = new OriginalXHR();
         const originalOpen = xhr.open;
+        const originalSend = xhr.send;
         xhr.open = function(method, url, ...rest) {
           try {
             if (typeof url === 'string') {
+              try { xhr.__td_url = new URL(url, window.location.href).toString(); } catch { xhr.__td_url = url; }
               if (url.includes('supabase.co') || url.includes('supabase.com')) {
                 if (!self.detectedTechs.databases.find(d => d.name === 'Supabase')) {
                   self.detectedTechs.databases.push({ name: 'Supabase' });
@@ -685,9 +965,39 @@ class TechDetector {
                   runtime.sendMessage({ action: 'techDetected', data: self.detectedTechs });
                 }
               }
-              if (url.startsWith('/api/')) {
-                if (!self.detectedTechs.backend.find(b => b.name === 'Next.js API')) {
-                  self.detectedTechs.backend.push({ name: 'Next.js API' });
+              try {
+                const u = new URL(url, window.location.href);
+                const p = u.pathname || '';
+                const sameOrigin = (u.origin === window.location.origin);
+                if (sameOrigin && (p.includes('/api/') || p.startsWith('/trpc') || p.includes('/graphql'))) {
+                  if (!self.detectedTechs.backend.find(b => b.name === 'Next.js API')) {
+                    self.detectedTechs.backend.push({ name: 'Next.js API' });
+                    runtime.sendMessage({ action: 'techDetected', data: self.detectedTechs });
+                  }
+                }
+                
+              } catch {}
+              if (/\.php(\?|$)/i.test(url)) {
+                if (!self.detectedTechs.backend.find(b => b.name === 'PHP')) {
+                  self.detectedTechs.backend.push({ name: 'PHP' });
+                  runtime.sendMessage({ action: 'techDetected', data: self.detectedTechs });
+                }
+              }
+              if (/\.aspx(\?|$)/i.test(url)) {
+                if (!self.detectedTechs.backend.find(b => b.name === 'ASP.NET')) {
+                  self.detectedTechs.backend.push({ name: 'ASP.NET' });
+                  runtime.sendMessage({ action: 'techDetected', data: self.detectedTechs });
+                }
+              }
+              if (/\/rest\/v1|\/auth\/v1|\/realtime\/v1/i.test(url)) {
+                if (!self.detectedTechs.databases.find(d => d.name === 'Supabase')) {
+                  self.detectedTechs.databases.push({ name: 'Supabase', inferred: true });
+                  runtime.sendMessage({ action: 'techDetected', data: self.detectedTechs });
+                }
+              }
+              if (/firebaseio\.com|firestore\.googleapis\.com|identitytoolkit\.googleapis\.com|gstatic\.com\/firebasejs/i.test(url)) {
+                if (!self.detectedTechs.databases.find(d => d.name === 'Firebase')) {
+                  self.detectedTechs.databases.push({ name: 'Firebase' });
                   runtime.sendMessage({ action: 'techDetected', data: self.detectedTechs });
                 }
               }
@@ -695,6 +1005,41 @@ class TechDetector {
           } catch {}
           return originalOpen.call(xhr, method, url, ...rest);
         };
+        xhr.addEventListener('readystatechange', function() {
+          try {
+            if (xhr.readyState === 2 || xhr.readyState === 4) {
+              const get = (k) => (xhr.getResponseHeader(k) || '').toLowerCase();
+              const xpb = get('x-powered-by');
+              const server = get('server');
+
+              if (xpb.includes('express') || server.includes('express')) {
+                if (!self.detectedTechs.backend.find(b => b.name === 'Express.js')) {
+                  self.detectedTechs.backend.push({ name: 'Express.js' });
+                  runtime.sendMessage({ action: 'techDetected', data: self.detectedTechs });
+                }
+              }
+              if (xpb.includes('fastify') || server.includes('fastify')) {
+                if (!self.detectedTechs.backend.find(b => b.name === 'Fastify')) {
+                  self.detectedTechs.backend.push({ name: 'Fastify' });
+                  runtime.sendMessage({ action: 'techDetected', data: self.detectedTechs });
+                }
+              }
+              if (xpb.includes('nestjs') || server.includes('nest')) {
+                if (!self.detectedTechs.backend.find(b => b.name === 'NestJS')) {
+                  self.detectedTechs.backend.push({ name: 'NestJS' });
+                  runtime.sendMessage({ action: 'techDetected', data: self.detectedTechs });
+                }
+              }
+              if (server.includes('node')) {
+                if (!self.detectedTechs.backend.find(b => b.name === 'Node.js')) {
+                  self.detectedTechs.backend.push({ name: 'Node.js' });
+                  runtime.sendMessage({ action: 'techDetected', data: self.detectedTechs });
+                }
+              }
+            }
+          } catch {}
+        });
+        xhr.send = function(...a) { try {} catch {} return originalSend.apply(xhr, a); };
         return xhr;
       }
       window.XMLHttpRequest = WrappedXHR;
@@ -706,9 +1051,39 @@ class TechDetector {
       const originalBeacon = navigator.sendBeacon.bind(navigator);
       navigator.sendBeacon = (url, data) => {
         try {
-          if (typeof url === 'string' && url.startsWith('/api/')) {
-            if (!self.detectedTechs.backend.find(b => b.name === 'Next.js API')) {
-              self.detectedTechs.backend.push({ name: 'Next.js API' });
+          try {
+            const u = new URL(url, window.location.href);
+            const p = u.pathname || '';
+            const sameOrigin = (u.origin === window.location.origin);
+            if (sameOrigin && (p.includes('/api/') || p.startsWith('/trpc') || p.includes('/graphql'))) {
+              if (!self.detectedTechs.backend.find(b => b.name === 'Next.js API')) {
+                self.detectedTechs.backend.push({ name: 'Next.js API' });
+                runtime.sendMessage({ action: 'techDetected', data: self.detectedTechs });
+              }
+            }
+            
+          } catch {}
+          if (typeof url === 'string' && /\.php(\?|$)/i.test(url)) {
+            if (!self.detectedTechs.backend.find(b => b.name === 'PHP')) {
+              self.detectedTechs.backend.push({ name: 'PHP' });
+              runtime.sendMessage({ action: 'techDetected', data: self.detectedTechs });
+            }
+          }
+          if (typeof url === 'string' && /\.aspx(\?|$)/i.test(url)) {
+            if (!self.detectedTechs.backend.find(b => b.name === 'ASP.NET')) {
+              self.detectedTechs.backend.push({ name: 'ASP.NET' });
+              runtime.sendMessage({ action: 'techDetected', data: self.detectedTechs });
+            }
+          }
+          if (typeof url === 'string' && /\/rest\/v1|\/auth\/v1|\/realtime\/v1/i.test(url)) {
+            if (!self.detectedTechs.databases.find(d => d.name === 'Supabase')) {
+              self.detectedTechs.databases.push({ name: 'Supabase', inferred: true });
+              runtime.sendMessage({ action: 'techDetected', data: self.detectedTechs });
+            }
+          }
+          if (typeof url === 'string' && /firebaseio\.com|firestore\.googleapis\.com|identitytoolkit\.googleapis\.com|gstatic\.com\/firebasejs/i.test(url)) {
+            if (!self.detectedTechs.databases.find(d => d.name === 'Firebase')) {
+              self.detectedTechs.databases.push({ name: 'Firebase' });
               runtime.sendMessage({ action: 'techDetected', data: self.detectedTechs });
             }
           }
@@ -762,6 +1137,33 @@ class TechDetector {
           this.detectedTechs.databases.push({ name: 'Supabase' });
           this.detectedTechs.databases.push({ name: 'PostgreSQL', inferred: true });
         }
+      }
+    } catch {}
+
+    // Firebase local clues: localStorage prefixes and IndexedDB database names
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i) || '';
+        if (key.startsWith('firebase:') || key.includes('firebaseAuth') || key.includes('firebase:host:')) {
+          if (!this.detectedTechs.databases.find(d => d.name === 'Firebase')) {
+            this.detectedTechs.databases.push({ name: 'Firebase' });
+          }
+          break;
+        }
+      }
+    } catch {}
+
+    try {
+      const dbsPromise = indexedDB?.databases?.();
+      if (dbsPromise && typeof dbsPromise.then === 'function') {
+        dbsPromise.then((dbs) => {
+          const names = (dbs || []).map(d => (d && d.name) || '').filter(Boolean);
+          const hasFirebaseIDB = names.some(n => n === 'firebaseLocalStorageDb' || n === 'firebase-installations-database');
+          if (hasFirebaseIDB && !this.detectedTechs.databases.find(d => d.name === 'Firebase')) {
+            this.detectedTechs.databases.push({ name: 'Firebase' });
+            runtime?.sendMessage?.({ action: 'techDetected', data: this.detectedTechs });
+          }
+        }).catch(() => {});
       }
     } catch {}
   }

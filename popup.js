@@ -163,13 +163,29 @@ function displayTechCategory(container, techs) {
     if (tech.version && tech.version !== 'Unknown') {
       displayText += ` ${tech.version}`;
     }
-    if (tech.inferred) {
-      displayText += ' *';
-      badge.title = t('inferred');
-    }
+    const titleParts = [];
+    if (tech.inferred) titleParts.push(t('inferred'));
+    if (tech.via === 'headers') titleParts.push(t('viaHeaders'));
+    if (titleParts.length) badge.title = titleParts.join('; ');
 
     badge.textContent = displayText;
     techDiv.appendChild(badge);
+
+    // Flags next to badge for clarity (no special glyphs)
+    const flags = [];
+    if (tech.inferred) flags.push(t('inferredLabel') || t('inferred'));
+    if (tech.via === 'headers') flags.push(t('viaHeadersLabel') || t('viaHeaders'));
+    if (flags.length) {
+      const flagsWrap = document.createElement('span');
+      flagsWrap.className = 'tech-flags';
+      flags.forEach(text => {
+        const f = document.createElement('span');
+        f.className = 'tech-flag';
+        f.textContent = text;
+        flagsWrap.appendChild(f);
+      });
+      techDiv.appendChild(flagsWrap);
+    }
     container.appendChild(techDiv);
   });
 }

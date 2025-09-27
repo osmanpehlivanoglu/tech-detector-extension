@@ -8,7 +8,11 @@ const translations = {
     copied: "Copied!",
     failed: "Failed",
     inferred: "Inferred",
+    viaHeaders: "Detected via headers",
+    inferredLabel: "via inferred",
+    viaHeadersLabel: "via headers",
     testSites: "Test Sites",
+    legendTitle: "Legend",
     categories: {
       frameworks: "JavaScript Frameworks",
       cssFrameworks: "CSS Frameworks",
@@ -29,7 +33,11 @@ const translations = {
     copied: "Kopyalandı!",
     failed: "Başarısız",
     inferred: "Çıkarım",
+    viaHeaders: "Başlıklar ile tespit",
+    inferredLabel: "çıkarım yoluyla",
+    viaHeadersLabel: "başlıklar ile",
     testSites: "Test Siteleri",
+    legendTitle: "Açıklamalar",
     categories: {
       frameworks: "JavaScript Framework'leri",
       cssFrameworks: "CSS Framework'leri",
